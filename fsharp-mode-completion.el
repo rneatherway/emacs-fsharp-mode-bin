@@ -207,8 +207,9 @@ display in a help buffer instead.")
     (kill-process fsharp-ac-completion-process))
 
   (condition-case nil
-      (setq fsharp-ac-completion-process (fsharp-ac--configure-proc))
-    (fsharp-ac--reset-timer)
+      (progn
+        (setq fsharp-ac-completion-process (fsharp-ac--configure-proc))
+        (fsharp-ac--reset-timer))
     (error
      (setq fsharp-ac-intellisense-enabled nil)
      (message "Failed to start fsautocomplete. Disabling intellisense."))))
@@ -413,12 +414,12 @@ The current buffer must be an F# file that exists on disk."
          (end  (fsharp-error-end err))
          (face (fsharp-error-face err))
          (txt  (fsharp-error-text err))
-         (file (fsharp-error-text err))
+         (file (fsharp-error-file err))
          (ofaces (mapcar (lambda (o) (overlay-get o 'face))
                          (overlays-in beg end)))
          )
-    (unless (or (string= (expand-file-name buffer-file-name)
-                         (expand-file-name file))
+    (unless (or (not (string= (file-truename buffer-file-name)
+                              (file-truename file)))
              (and (eq face 'fsharp-warning-face)
                  (memq 'fsharp-error-face ofaces)))
 
