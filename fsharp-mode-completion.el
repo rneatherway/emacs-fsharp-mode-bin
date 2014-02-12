@@ -74,7 +74,8 @@ display in a help buffer instead.")
 (defvar fsharp-ac-project-files nil)
 (defvar fsharp-ac-idle-timer nil)
 (defvar fsharp-ac-verbose nil)
-(defvar fsharp-ac-current-candidate)
+(defvar fsharp-ac-current-candidate nil)
+(defvar fsharp-ac-current-helptext (make-hash-table :test 'equal))
 
 (defconst fsharp-ac--log-buf "*fsharp-debug*")
 
@@ -86,7 +87,7 @@ display in a help buffer instead.")
       (let ((pt (point))
             (atend (eq (point-max) (point))))
         (goto-char (point-max))
-        (insert-before-markers str)
+        (insert-before-markers (format "%s: %s" (float-time) str))
         (unless atend
           (goto-char pt))))))
 
@@ -167,6 +168,7 @@ display in a help buffer instead.")
   (setq fsharp-ac-project-files nil
         fsharp-ac-status 'idle
         fsharp-ac-current-candidate nil)
+  (clrhash fsharp-ac-current-helptext)
   (fsharp-ac-clear-errors))
 
 ;;; ----------------------------------------------------------------------------
@@ -245,7 +247,7 @@ display in a help buffer instead.")
 
 (defvar fsharp-ac-source
   '((candidates . fsharp-ac-candidate)
-    (prefix . fsharp-ac-prefix)
+    (prefix . fsharp-ac--residue)
     (requires . 0)
     (document . fsharp-ac-document)
     ;(action . fsharp-ac-action)
@@ -255,9 +257,16 @@ display in a help buffer instead.")
 (defun fsharp-ac-document (item)
   (let* ((ticks (s-match "^``\\(.*\\)``$" item))
          (key (if ticks (cadr ticks) item))
-         (prop (gethash key fsharp-ac-current-helptext))
-         (help (if prop prop "Loading documentation...")))
-    (pos-tip-fill-string help popup-tip-max-width)))
+         (prop (gethash key fsharp-ac-current-helptext)))
+    (let ((help 
+           (if prop prop
+             (log-psendstr fsharp-ac-completion-process
+                           (format "helptext %s\n" key))
+             (with-local-quit
+               (accept-process-output fsharp-ac-completion-process 0 100))
+             (gethash key fsharp-ac-current-helptext
+                      "Loading documentation..."))))
+      (pos-tip-fill-string help popup-tip-max-width))))
 
 (defun fsharp-ac-candidate ()
   (interactive)
@@ -265,7 +274,8 @@ display in a help buffer instead.")
     (idle
      (setq fsharp-ac-status 'wait)
      (setq fsharp-ac-current-candidate nil)
-
+     (clrhash fsharp-ac-current-helptext)
+     
      (fsharp-ac-parse-current-buffer)
      (fsharp-ac-send-pos-request
       "completion"
@@ -280,11 +290,65 @@ display in a help buffer instead.")
      (setq fsharp-ac-status 'idle)
      fsharp-ac-current-candidate)))
 
-(defun fsharp-ac-prefix ()
-  (or (ac-prefix-symbol)
-      (let ((c (char-before)))
-        (when (eq ?\. c)
-          (point)))))
+(defconst fsharp-ac--ident
+  (rx (one-or-more (not (any ".` \t\r\n"))))
+  "Regexp for normal identifiers")
+
+; Note that this regexp is not 100% correct.
+; Allowable characters are defined using unicode
+; character classes, so this will match some very
+; unusual strings composed of rare unicode chars.
+(defconst fsharp-ac--rawIdent
+  (rx (seq
+       "``"
+       (one-or-more
+        (or
+         (not (any "`\n\r\t"))
+         (seq "`" (not (any "`\n\r\t")))))
+       "``"))
+  "Regexp for raw identifiers")
+
+(defconst fsharp-ac--rawIdResidue
+  (rx (seq
+       "``"
+       (one-or-more
+        (or
+         (not (any "`\n\r\t"))
+         (seq "`" (not (any "`\n\r\t")))))
+       string-end))
+  "Regexp for residues starting with backticks")
+
+(defconst fsharp-ac--dottedIdentNormalResidue
+  (rx-to-string
+   `(seq (zero-or-more
+          (seq
+           (or (regexp ,fsharp-ac--ident)
+               (regexp ,fsharp-ac--rawIdent))
+           "."))
+         (group (zero-or-more (not (any ".` \t\r\n"))))
+         string-end))
+  "Regexp for a dotted ident with a standard residue")
+
+(defconst fsharp-ac--dottedIdentRawResidue
+  (rx-to-string `(seq (zero-or-more
+                       (seq
+                        (or (regexp ,fsharp-ac--ident)
+                            (regexp ,fsharp-ac--rawIdent))
+                        "."))
+                      (group (regexp ,fsharp-ac--rawIdResidue))))
+  "Regexp for a dotted ident with a raw residue")
+
+(defun fsharp-ac--residue ()
+  (let ((result 
+         (let ((line (buffer-substring-no-properties (line-beginning-position) (point))))
+           (- (point)
+              (cadr
+                (-min-by 'car-less-than-car
+                 (-map (lambda (r) (let ((e (-map 'length (s-match r line))))
+                                (if e e '(0 0))))
+                       (list fsharp-ac--dottedIdentRawResidue
+                             fsharp-ac--dottedIdentNormalResidue))))))))
+    result))
 
 (defun fsharp-ac-can-make-request ()
   "Test whether it is possible to make a request with the compiler binding.
@@ -293,6 +357,7 @@ The current buffer must be an F# file that exists on disk."
     (and file
          (fsharp-ac--process-live-p)
          (not ac-completing)
+         (eq fsharp-ac-status 'idle)
          (or (member (file-truename file) fsharp-ac-project-files)
              (string-match-p (rx (or "fsx" "fsscript"))
                              (file-name-extension file))))))
@@ -503,17 +568,29 @@ around to the start of the buffer."
     (goto-char (point-min))
     (let ((eofloc (search-forward "\n" nil t)))
       (when eofloc
+        (when (numberp fsharp-ac-debug)
+          (cond
+           ((eq 1 fsharp-ac-debug)
+            (fsharp-ac--log (format "%s ...\n" (buffer-substring (point-min) (min 100 eofloc)))))
+
+           ((>= 2 fsharp-ac-debug)
+            (fsharp-ac--log (format "%s\n" (buffer-substring (point-min) eofloc))))))
+
         (let ((json-array-type 'list)
               (json-object-type 'hash-table)
-              (json-key-type 'string)
-              (msg (buffer-substring-no-properties (point-min) (match-beginning 0))))
-          (delete-region (point-min) (match-end 0))
-          (json-read-from-string msg))))))
+              (json-key-type 'string))
+          (condition-case nil
+              (progn
+                (goto-char (point-min))
+                (let ((msg (json-read)))
+                  (delete-region (point-min) (+ (point) 1))
+                  msg))
+            (error
+             (fsharp-ac--log (format "Malformed JSON: %s" (buffer-substring-no-properties (point-min) (point-max))))
+             (message "Error: F# completion process produced malformed JSON"))))))))
 
 (defun fsharp-ac-filter-output (proc str)
   "Filter output from the completion process and handle appropriately."
-  (fsharp-ac--log str)
-
   (with-current-buffer (process-buffer proc)
     (save-excursion
       (goto-char (process-mark proc))
@@ -521,9 +598,11 @@ around to the start of the buffer."
 
   (let ((msg (fsharp-ac--get-msg proc)))
     (while msg
-      ;(message "[filter] length(msg) = %d" (length msg))
       (let ((kind (gethash "Kind" msg))
             (data (gethash "Data" msg)))
+        (fsharp-ac--log (format "Received '%s' message of length %d\n"
+                                kind
+                                (hash-table-size msg)))
         (cond
          ((s-equals? "ERROR" kind) (fsharp-ac-handle-process-error data))
          ((s-equals? "INFO" kind) (when fsharp-ac-verbose (fsharp-ac-message-safely data)))
@@ -548,7 +627,7 @@ around to the start of the buffer."
   (setq fsharp-ac-status 'idle))
 
 (defun fsharp-ac-handle-doctext (data)
-  (setq fsharp-ac-current-helptext data))
+  (maphash (lambda (k v) (puthash k v fsharp-ac-current-helptext)) data))
 
 (defun fsharp-ac-visit-definition (data)
   (let* ((file (gethash "File" data))
@@ -559,10 +638,12 @@ around to the start of the buffer."
 
 (defun fsharp-ac-handle-errors (data)
   "Display error overlays and set buffer-local error variables for error navigation."
-  (fsharp-ac-clear-errors)
-  (let ((errs (fsharp-ac-parse-errors data)))
-    (setq fsharp-ac-errors errs)
-    (mapc 'fsharp-ac/show-error-overlay errs)))
+  (when (equal major-mode 'fsharp-mode)
+    (unless (or (active-minibuffer-window) cursor-in-echo-area)
+      (fsharp-ac-clear-errors)
+      (let ((errs (fsharp-ac-parse-errors data)))
+        (setq fsharp-ac-errors errs)
+        (mapc 'fsharp-ac/show-error-overlay errs)))))
 
 (defun fsharp-ac-handle-tooltip (data)
   "Display information from the background process. If the user
