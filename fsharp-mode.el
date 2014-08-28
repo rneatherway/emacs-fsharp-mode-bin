@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.2.1
+;; Version: 1.3.0
 
 ;; This file is not part of GNU Emacs.
 
@@ -141,8 +141,13 @@ and whether it is in a project directory.")
   (modify-syntax-entry ?\n "> b" fsharp-mode-syntax-table)
 
   ; quote and underscore are part of symbols
+  ; so are # and ! as they can form part of types/preprocessor
+  ; directives and also keywords
   (modify-syntax-entry ?' "_" fsharp-mode-syntax-table)
   (modify-syntax-entry ?_ "_" fsharp-mode-syntax-table)
+  (modify-syntax-entry ?# "_" fsharp-mode-syntax-table)
+  (modify-syntax-entry ?! "_" fsharp-mode-syntax-table)
+
   ; ISO-latin accented letters and EUC kanjis are part of words
   (let ((i 160))
     (while (< i 256)
@@ -207,7 +212,9 @@ and whether it is in a project directory.")
           ac-auto-start
           ac-use-comphist
           ac-auto-show-menu
-          popup-tip-max-width))
+          popup-tip-max-width
+	  fsharp-ac-last-parsed-ticks
+	  fsharp-ac-errors))
 
   (setq major-mode               'fsharp-mode
         mode-name                "fsharp"
@@ -234,7 +241,7 @@ and whether it is in a project directory.")
         )
 
   ; Syntax highlighting
-  (setq font-lock-defaults '(fsharp-font-lock-keywords nil t))
+  (setq font-lock-defaults '(fsharp-font-lock-keywords))
   (setq syntax-propertize-function 'fsharp--syntax-propertize-function)
   ;; Error navigation
   (setq next-error-function 'fsharp-ac/next-error)
