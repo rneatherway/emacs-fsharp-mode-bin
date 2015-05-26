@@ -28,6 +28,8 @@
 (require 'dash)
 (require 'auto-complete)
 (require 'json)
+(require 'etags)
+(require 'fsharp-mode-util)
 
 (autoload 'pos-tip-fill-string "pos-tip")
 (autoload 'pos-tip-show "pos-tip")
@@ -37,13 +39,6 @@
 (declare-function fsharp-mode/find-fsproj "fsharp-mode.el" (dir-or-file))
 
 ;;; User-configurable variables
-
-(defvar fsharp-ac-using-mono
-  (case system-type
-    ((windows-nt cygwin msdos) nil)
-    (otherwise t))
-  "Whether the .NET runtime in use is mono. Defaults to `nil' for
-  Microsoft platforms (including Cygwin), `t' for all *nix.")
 
 (defvar fsharp-ac-executable "fsautocomplete.exe")
 
@@ -465,6 +460,11 @@ prevent usage errors being displayed by FSHARP-DOC-MODE."
                                 (line-number-at-pos)
                                 (current-column))))
 
+(defun fsharp-ac/pop-gotodefn-stack ()
+  "Go back to where point was before jumping to definition."
+  (interactive)
+  (pop-tag-mark))
+
 (defun fsharp-ac--ac-start (&rest ac-start-args)
   "Start completion, using only the F# completion source for intellisense."
   (interactive)
@@ -713,6 +713,7 @@ around to the start of the buffer."
   (let* ((file (gethash "File" data))
          (line (gethash "Line" data))
          (col (gethash "Column" data)))
+    (ring-insert find-tag-marker-ring (point-marker))
     (find-file file)
     (goto-char (fsharp-ac-line-column-to-pos line col))))
 

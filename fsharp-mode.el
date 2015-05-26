@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.5.2
+;; Version: 1.5.3
 
 ;; This file is not part of GNU Emacs.
 
@@ -29,25 +29,19 @@
 (require 'fsharp-mode-completion)
 (require 'fsharp-doc)
 (require 'inf-fsharp-mode)
+(require 'fsharp-mode-util)
 (require 'compile)
+(require 'dash)
 
 ;;; Compilation
 
 (defvar fsharp-compile-command
-  (or (executable-find "fsharpc")
-      (executable-find "fsc"))
+  (-any #'fsharp-mode--executable-find '("fsharpc" "fsc"))
   "The program used to compile F# source files.")
 
 (defvar fsharp-build-command
-  (or (executable-find "xbuild")
-      (executable-find "msbuild"))
+  (-any #'fsharp-mode--msbuild-find '("xbuild" "msbuild"))
   "The command used to build F# projects and solutions.")
-
-(defvar fsharp-compiler nil
-  "The command used to compile an individual F# buffer.
-This will be set to a sane default, depending the type of file
-and whether it is in a project directory.")
-(make-variable-buffer-local 'fsharp-compiler)
 
 ;;; ----------------------------------------------------------------------------
 
@@ -97,6 +91,9 @@ and whether it is in a project directory.")
   (define-key fsharp-mode-map (kbd "C-c C-p") 'fsharp-ac/load-project)
   (define-key fsharp-mode-map (kbd "C-c C-t") 'fsharp-ac/show-tooltip-at-point)
   (define-key fsharp-mode-map (kbd "C-c C-d") 'fsharp-ac/gotodefn-at-point)
+  (define-key fsharp-mode-map (kbd "C-c C-b") 'fsharp-ac/pop-gotodefn-stack)
+  (define-key fsharp-mode-map (kbd "M-.")     'fsharp-ac/gotodefn-at-point)
+  (define-key fsharp-mode-map (kbd "M-,")     'fsharp-ac/pop-gotodefn-stack)
   (define-key fsharp-mode-map (kbd "C-c C-q") 'fsharp-ac/stop-process)
   (define-key fsharp-mode-map (kbd "C-c C-.") 'fsharp-ac/complete-at-point)
 
@@ -106,6 +103,8 @@ and whether it is in a project directory.")
       (define-key fsharp-mode-map [menu-bar] (make-sparse-keymap))
       (define-key fsharp-mode-map [menu-bar fsharp] (cons "F#" map))
 
+      (define-key map [pop-goto-defn] '("Pop goto definition stack" . fsharp-ac/pop-gotodefn-stack))
+      (define-key map [goto-defn] '("Goto definition" . fsharp-ac/gotodefn-at-point))
       (define-key map [goto-block-up] '("Goto block up" . fsharp-goto-block-up))
       (define-key map [mark-phrase] '("Mark phrase" . fsharp-mark-phrase))
       (define-key map [shift-left] '("Shift region to right" . fsharp-shift-region-right))
@@ -279,15 +278,17 @@ Otherwise, treat as a stand-alone file."
 3. The file's type.
 "
   (let* ((fname    (file-name-nondirectory file))
+         (dname    (file-name-directory file))
          (ext      (file-name-extension file))
          (proj     (fsharp-mode/find-sln-or-fsproj file))
-         (makefile (or (file-exists-p "Makefile") (file-exists-p "makefile"))))
+         (makefile (or (file-exists-p (concat dname "/Makefile"))
+                       (file-exists-p (concat dname "/makefile")))))
     (cond
      (makefile          compile-command)
-     (proj              (concat fsharp-build-command " /nologo " proj))
-     ((equal ext "fs")  (concat fsharp-compile-command " --nologo " file))
-     ((equal ext "fsl") (concat "fslex "  file))
-     ((equal ext "fsy") (concat "fsyacc " file))
+     (proj              (combine-and-quote-strings (list fsharp-build-command "/nologo" proj)))
+     ((equal ext "fs")  (combine-and-quote-strings (list fsharp-compile-command "--nologo" file)))
+     ((equal ext "fsl") (combine-and-quote-strings (list "fslex" file)))
+     ((equal ext "fsy") (combine-and-quote-strings (list "fsyacc" file)))
      (t                 compile-command))))
 
 (defun fsharp-find-alternate-file ()
