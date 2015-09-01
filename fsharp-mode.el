@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.5.4
+;; Version: 1.6.0
 
 ;; This file is not part of GNU Emacs.
 
@@ -69,6 +69,7 @@
   (define-key fsharp-mode-map "\C-cx" 'fsharp-run-executable-file)
   (define-key fsharp-mode-map "\M-\C-x" 'fsharp-eval-phrase)
   (define-key fsharp-mode-map "\C-c\C-e" 'fsharp-eval-phrase)
+  (define-key fsharp-mode-map "\C-x\C-e" 'fsharp-eval-phrase)
   (define-key fsharp-mode-map "\C-c\C-r" 'fsharp-eval-region)
   (define-key fsharp-mode-map "\C-c\C-f" 'fsharp-load-buffer-file)
   (define-key fsharp-mode-map "\C-c\C-s" 'fsharp-show-subshell)
@@ -96,6 +97,7 @@
   (define-key fsharp-mode-map (kbd "M-,")     'fsharp-ac/pop-gotodefn-stack)
   (define-key fsharp-mode-map (kbd "C-c C-q") 'fsharp-ac/stop-process)
   (define-key fsharp-mode-map (kbd "C-c C-.") 'fsharp-ac/complete-at-point)
+  (define-key fsharp-mode-map (kbd "C-c C-u") 'fsharp-ac/symboluse-at-point)
 
   (unless running-xemacs
     (let ((map (make-sparse-keymap "fsharp"))
@@ -286,7 +288,7 @@ Otherwise, treat as a stand-alone file."
     (cond
      (makefile          compile-command)
      (proj              (combine-and-quote-strings (list fsharp-build-command "/nologo" proj)))
-     ((equal ext "fs")  (combine-and-quote-strings (list fsharp-compile-command "--nologo" file)))
+     ((or (equal ext "fs") (equal ext "fsx"))  (combine-and-quote-strings (list fsharp-compile-command "--nologo" file)))
      ((equal ext "fsl") (combine-and-quote-strings (list "fslex" file)))
      ((equal ext "fsy") (combine-and-quote-strings (list "fsyacc" file)))
      (t                 compile-command))))
