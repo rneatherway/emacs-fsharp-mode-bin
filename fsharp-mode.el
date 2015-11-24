@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.6.4
+;; Version: 1.7.0
 
 ;; This file is not part of GNU Emacs.
 
@@ -32,6 +32,7 @@
 (require 'fsharp-mode-util)
 (require 'compile)
 (require 'dash)
+(require 'fsharp-mode-indent-smie)
 
 ;;; Compilation
 
@@ -193,6 +194,9 @@
   (require 'fsharp-doc)
   (require 'fsharp-mode-completion)
 
+
+  (fsharp-mode-indent-smie-setup)
+
   (use-local-map fsharp-mode-map)
 
   (mapc 'make-local-variable
@@ -233,7 +237,7 @@
         comment-indent-function  'fsharp-comment-indent-function
         indent-region-function   'fsharp-indent-region
         indent-line-function     'fsharp-indent-line
-        underline-minimum-offset  2
+        underline-minimum-offset  4
 
         paragraph-ignore-fill-prefix   t
         add-log-current-defun-function 'fsharp-current-defun
