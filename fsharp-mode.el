@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.7.1
+;; Version: 1.7.2
 
 ;; This file is not part of GNU Emacs.
 
@@ -254,6 +254,10 @@
   (setq next-error-function 'fsharp-ac/next-error)
   (add-hook 'next-error-hook 'fsharp-ac/show-error-at-point nil t)
   (add-hook 'post-command-hook 'fsharp-ac/show-error-at-point nil t)
+
+  ;; In Emacs 24.4 onwards, tell electric-indent-mode that fsharp-mode
+  ;; has no deterministic indentation.
+  (when (boundp 'electric-indent-inhibit) (setq electric-indent-inhibit t))
 
   (let ((file (buffer-file-name)))
     (when file
