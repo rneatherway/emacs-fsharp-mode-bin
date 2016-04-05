@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.7.4
+;; Version: 1.8.0
 
 ;; This file is not part of GNU Emacs.
 
@@ -219,7 +219,6 @@
           company-minimum-prefix-length
           company-require-match
           company-tooltip-align-annotations
-          popup-tip-max-width
           fsharp-ac-last-parsed-ticks
           fsharp-ac-errors))
 
@@ -252,7 +251,7 @@
   (setq company-backends (list 'fsharp-ac/company-backend))
   (setq company-auto-complete 't)
   (setq company-auto-complete-chars ".")
-  (setq company-idle-delay 0.5)
+  (setq company-idle-delay 0.03)
   (setq company-minimum-prefix-length 0)
   (setq company-require-match 'nil)
   (setq company-tooltip-align-annotations 't)
@@ -266,7 +265,9 @@
   ;; In Emacs 24.4 onwards, tell electric-indent-mode that fsharp-mode
   ;; has no deterministic indentation.
   (when (boundp 'electric-indent-inhibit) (setq electric-indent-inhibit t))
-  (when (boundp 'company-quickhelp-mode) (company-quickhelp-mode 1))
+  (when (and (display-graphic-p)
+             (boundp 'company-quickhelp-mode)) ; not supported on ttys
+    (company-quickhelp-mode 1))
 
   (let ((file (buffer-file-name)))
     (when file

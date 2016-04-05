@@ -94,13 +94,15 @@ If set to nil, display in a help buffer instead.")
 (defvar fsharp-ac--last-parsed-buffer nil
   "Last parsed BUFFER, so that we reparse if we switch buffers.")
 
-(defvar-local company-prefix nil)
 (defvar-local fsharp-company-callback nil)
 
 (defconst fsharp-ac--log-buf "*fsharp-debug*")
 (defconst fsharp-ac--completion-procname "fsharp-complete")
 (defconst fsharp-ac--completion-bufname
   (concat "*" fsharp-ac--completion-procname "*"))
+
+(defvar-local fsharp-ac-last-parsed-line -1
+  "The line number that we last requested a parse for completions")
 
 (defun fsharp-ac--log (str)
   (when fsharp-ac-debug
@@ -138,11 +140,6 @@ since the last request."
                  (buffer-substring-no-properties (point-min) (point-max)))))
       (setq fsharp-ac-last-parsed-ticks (buffer-chars-modified-tick)))))
 
-(defun fsharp-ac-parse-file (file)
-  (with-current-buffer (find-file-noselect file)
-    (fsharp-ac-parse-current-buffer)))
-
-
 (defun fsharp-ac--isIdChar (c)
   (let ((gc (get-char-code-property c 'general-category)))
     (or
@@ -158,9 +155,8 @@ since the last request."
 (defun fsharp-ac--buffer-truename (&optional buf)
   "Get the truename of BUF, or the current buffer by default.
 For indirect buffers return the truename of the base buffer."
-  (if (buffer-base-buffer buf)
-      (file-truename (buffer-file-name (buffer-base-buffer buf)))
-    (file-truename (buffer-file-name buf))))
+  (-some-> (buffer-file-name (or (buffer-base-buffer buf) buf))
+	   (file-truename)))
 
 (defun fsharp-ac/load-project (file)
   "Load the specified fsproj FILE as a project."
@@ -230,11 +226,12 @@ For indirect buffers return the truename of the base buffer."
 
 ;;; ----------------------------------------------------------------------------
 ;;; Display Requests
-
 (defun fsharp-ac-send-pos-request (cmd file line col)
-  (log-psendstr fsharp-ac-completion-process
-                (format "%s \"%s\" %d %d %d\n" cmd file line col
-                        (* 1000 fsharp-ac-blocking-timeout))))
+  (let ((linestr (replace-regexp-in-string "\"" "\\\""(buffer-substring-no-properties (line-beginning-position) (line-end-position)) t t)))
+    (log-psendstr fsharp-ac-completion-process
+                  (format "%s \"%s\" \"%s\" %d %d %d %s\n" cmd file linestr line col
+                          (* 1000 fsharp-ac-blocking-timeout)
+                          (if (string= cmd "completion") "filter=StartsWith" "")))))
 
 (defun fsharp-ac--process-live-p ()
   "Check whether the background process is live."
@@ -342,20 +339,18 @@ For indirect buffers return the truename of the base buffer."
   (setq fsharp-ac-status 'wait)
   (setq fsharp-ac-current-candidate nil)
   (clrhash fsharp-ac-current-helptext)
-  (fsharp-ac-parse-current-buffer)
-  (fsharp-ac-send-pos-request
-   "completion"
-   (fsharp-ac--buffer-truename)
-   (line-number-at-pos)
-   (+ 1 (current-column))))
+  (let ((line (line-number-at-pos)))
+    (if (not (eq fsharp-ac-last-parsed-line line))
+        (progn
+          (setq fsharp-ac-last-parsed-line line)
+          (fsharp-ac-parse-current-buffer)))
+    (fsharp-ac-send-pos-request
+     "completion"
+     (fsharp-ac--buffer-truename)
+     line
+     (+ 1 (current-column)))))
 
 (require 'cl-lib)
-
-(defun fsharp-company-filter (prefix candidates)
-  (if prefix
-    (cl-loop for candidate in candidates
-             when (string-prefix-p prefix candidate 't)
-             collect candidate)))
 
 (defun fsharp-company-candidates (callback)
   (when (eq company-prefix "")
@@ -363,22 +358,23 @@ For indirect buffers return the truename of the base buffer."
     ;; just pressed '.' or are at the start of a new line
     (setq fsharp-ac-status 'idle))
 
-  (when (and (fsharp-ac-can-make-request 't)
+  (if (and (fsharp-ac-can-make-request 't)
              (eq fsharp-ac-status 'idle))
-    (setq fsharp-company-callback callback)
-    (fsharp-ac-make-completion-request)))
+      (progn
+  (setq fsharp-company-callback callback)
+  (fsharp-ac-make-completion-request))
+    (funcall callback nil)))
 
 (defun fsharp-ac-add-annotation-prop (s candidate)
   (propertize s 'annotation (gethash "GlyphChar" candidate)))
 
 (defun fsharp-ac-completion-done ()
-  (let ((mapped-completion
-    (-map (lambda (candidate)
-            (let ((s (gethash "Name" candidate)))
-              (if (fsharp-ac--isNormalId s) (fsharp-ac-add-annotation-prop s candidate)
-                (s-append "``" (s-prepend "``" (fsharp-ac-add-annotation-prop s candidate))))))
-          fsharp-ac-current-candidate)))
-    (funcall fsharp-company-callback (fsharp-company-filter company-prefix mapped-completion))))
+  (->> (-map (lambda (candidate)
+        (let ((s (gethash "Name" candidate)))
+          (if (fsharp-ac--isNormalId s) (fsharp-ac-add-annotation-prop s candidate)
+      (s-append "``" (s-prepend "``" (fsharp-ac-add-annotation-prop s candidate))))))
+    fsharp-ac-current-candidate)
+       (funcall fsharp-company-callback)))
 
 (defun completion-char-p (c)
   "True if the character before the point is a word char or ."
@@ -402,7 +398,7 @@ For indirect buffers return the truename of the base buffer."
         (doc-buffer (company-doc-buffer (fsharp-ac-document arg)))))
 
 (defconst fsharp-ac--ident
-  (rx (one-or-more (not (any ".` \t\r\n"))))
+  (rx (one-or-more (not (any ".` ,(\t\r\n"))))
   "Regexp for normal identifiers.")
 
 ; Note that this regexp is not 100% correct.
@@ -436,7 +432,7 @@ For indirect buffers return the truename of the base buffer."
            (or (regexp ,fsharp-ac--ident)
                (regexp ,fsharp-ac--rawIdent))
            "."))
-         (group (zero-or-more (not (any ".` \t\r\n"))))
+         (group (zero-or-more (not (any ".` ,(\t\r\n"))))
          string-end))
   "Regexp for a dotted ident with a standard residue.")
 
@@ -501,7 +497,6 @@ on QUIET to FSHARP-AC-CAN-MAKE-REQUEST. This is a bit of hack to
 prevent usage errors being displayed by FSHARP-DOC-MODE."
   (interactive)
   (when (fsharp-ac-can-make-request quiet)
-     (fsharp-ac-parse-current-buffer)
      (fsharp-ac-send-pos-request "tooltip"
                                  (fsharp-ac--buffer-truename)
                                  (line-number-at-pos)
@@ -511,7 +506,6 @@ prevent usage errors being displayed by FSHARP-DOC-MODE."
   "Find the uses in this file of the symbol at point."
   (interactive)
   (when (fsharp-ac-can-make-request)
-    (fsharp-ac-parse-current-buffer)
     (fsharp-ac-send-pos-request "symboluse"
                                 (fsharp-ac--buffer-truename)
                                 (line-number-at-pos)
@@ -521,7 +515,6 @@ prevent usage errors being displayed by FSHARP-DOC-MODE."
   "Find the point of declaration of the symbol at point and goto it."
   (interactive)
   (when (fsharp-ac-can-make-request)
-    (fsharp-ac-parse-current-buffer)
     (fsharp-ac-send-pos-request "finddecl"
                                 (fsharp-ac--buffer-truename)
                                 (line-number-at-pos)
@@ -532,16 +525,11 @@ prevent usage errors being displayed by FSHARP-DOC-MODE."
   (interactive)
   (pop-tag-mark))
 
-(defun fsharp-ac/electric-backspace ()
-  (interactive)
-  (when (eq (char-before) ?.)
-    (ac-stop))
-  (delete-char -1))
-
 (defun fsharp-ac/complete-at-point (&optional quiet)
   (interactive)
   (when (and (fsharp-ac-can-make-request quiet)
              (eq fsharp-ac-status 'idle))
+    (fsharp-ac-parse-current-buffer)
     (company-complete)))
 
 (defun fsharp-ac--parse-current-file ()
