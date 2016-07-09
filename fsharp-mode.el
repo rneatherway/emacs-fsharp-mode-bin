@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.8.1
+;; Version: 1.9.0
 
 ;; This file is not part of GNU Emacs.
 
@@ -27,6 +27,7 @@
 ;; Boston, MA 02110-1301, USA.
 
 (require 'fsharp-mode-completion)
+(require 'flycheck-fsharp)
 (require 'fsharp-doc)
 (require 'inf-fsharp-mode)
 (require 'fsharp-mode-util)
@@ -248,19 +249,13 @@
   (setq font-lock-defaults '(fsharp-font-lock-keywords))
   (setq syntax-propertize-function 'fsharp--syntax-propertize-function)
   ; Some reasonable defaults for company mode
-  (setq company-backends (list 'fsharp-ac/company-backend))
+  (add-to-list 'company-backends 'fsharp-ac/company-backend)
   (setq company-auto-complete 't)
   (setq company-auto-complete-chars ".")
   (setq company-idle-delay 0.03)
   (setq company-minimum-prefix-length 0)
   (setq company-require-match 'nil)
   (setq company-tooltip-align-annotations 't)
-  
-
-  ;; Error navigation
-  (setq next-error-function 'fsharp-ac/next-error)
-  (add-hook 'next-error-hook 'fsharp-ac/show-error-at-point nil t)
-  (add-hook 'post-command-hook 'fsharp-ac/show-error-at-point nil t)
 
   ;; In Emacs 24.4 onwards, tell electric-indent-mode that fsharp-mode
   ;; has no deterministic indentation.
@@ -275,6 +270,7 @@
       (fsharp-mode--load-with-binding file)))
 
   (turn-on-fsharp-doc-mode)
+  (flycheck-mode 1)
   (run-hooks 'fsharp-mode-hook))
 
 (defun fsharp-mode--load-with-binding (file)
@@ -333,8 +329,8 @@ Otherwise, treat as a stand-alone file."
       (when (y-or-n-p (concat "Do you want to save \"" name "\" before
 loading it? "))
         (save-buffer)))
-    (save-excursion (fsharp-run-process-if-needed))
-    (save-excursion (fsharp-simple-send inferior-fsharp-buffer-name command))))
+    (fsharp-run-process-if-needed)
+    (fsharp-simple-send inferior-fsharp-buffer-name command)))
 
 (defun fsharp-show-subshell ()
   (interactive)

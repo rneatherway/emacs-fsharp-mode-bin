@@ -104,22 +104,17 @@ be sent from another buffer in fsharp mode.
 
 (defun fsharp-run-process-if-needed (&optional cmd)
   "Launch fsi if needed, using CMD if supplied."
-  (if (comint-check-proc inferior-fsharp-buffer-name) nil
-    (if (not cmd)
-        (if (comint-check-proc inferior-fsharp-buffer-name)
-            (setq cmd inferior-fsharp-program)
-          (setq cmd (read-from-minibuffer "fsharp toplevel to run: "
-                                          inferior-fsharp-program))))
-    (setq inferior-fsharp-program cmd)
-    (let ((cmdlist (inferior-fsharp-args-to-list cmd))
+  (unless (comint-check-proc inferior-fsharp-buffer-name)
+    (setq inferior-fsharp-program
+	  (or cmd (read-from-minibuffer "fsharp toplevel to run: "
+					inferior-fsharp-program)))
+    (let ((cmdlist (inferior-fsharp-args-to-list inferior-fsharp-program))
           (process-connection-type nil))
-      (set-buffer (apply (function make-comint)
-                         inferior-fsharp-buffer-subname
-                         (car cmdlist) nil (cdr cmdlist)))
-      (inferior-fsharp-mode)
-      (display-buffer inferior-fsharp-buffer-name)
-      t)
-    ))
+      (with-current-buffer (apply (function make-comint)
+                                  inferior-fsharp-buffer-subname
+                                  (car cmdlist) nil (cdr cmdlist))
+        (inferior-fsharp-mode))
+      (display-buffer inferior-fsharp-buffer-name))))
 
 ;;;###autoload
 (defun run-fsharp (&optional cmd)
@@ -164,26 +159,26 @@ Input and output via buffer `*inferior-fsharp*'."
 (defun inferior-fsharp-eval-region (start end)
   "Send the current region to the inferior fsharp process."
   (interactive "r")
-  (save-excursion
-    (fsharp-run-process-if-needed)
+  (fsharp-run-process-if-needed)
     ;; send location to fsi
-    (let* ((name (file-truename (buffer-file-name (current-buffer))))
-           (dir (file-name-directory name))
-           (line (number-to-string (line-number-at-pos start)))
-           (loc (concat "# " line " \"" name "\"\n"))
-	   (movedir (concat "#silentCd @\"" dir "\";;\n")))
-      (comint-send-string inferior-fsharp-buffer-name movedir)
-      (comint-send-string inferior-fsharp-buffer-name loc)))
-  (goto-char end)
-  (comint-send-region inferior-fsharp-buffer-name start (point))
-  ;; normally, ";;" are part of the region
-  (if (and (>= (point) 2)
-	   (prog2 (backward-char 2) (looking-at ";;")))
-      (comint-send-string inferior-fsharp-buffer-name "\n")
-    (comint-send-string inferior-fsharp-buffer-name "\n;;\n"))
-  ;; the user may not want to see the output buffer
-  (if fsharp-display-when-eval
-      (display-buffer inferior-fsharp-buffer-name t)))
+  (let* ((name (file-truename (buffer-file-name (current-buffer))))
+         (dir (fsharp-ac--localname (file-name-directory name)))
+         (line (number-to-string (line-number-at-pos start)))
+         (loc (concat "# " line " \"" name "\"\n"))
+         (movedir (concat "#silentCd @\"" dir "\";;\n")))
+    (comint-send-string inferior-fsharp-buffer-name movedir)
+    (comint-send-string inferior-fsharp-buffer-name loc))
+  (save-excursion
+    (goto-char end)
+    (comint-send-region inferior-fsharp-buffer-name start (point))
+    ;; normally, ";;" are part of the region
+    (if (and (>= (point) 2)
+             (prog2 (backward-char 2) (looking-at ";;")))
+        (comint-send-string inferior-fsharp-buffer-name "\n")
+      (comint-send-string inferior-fsharp-buffer-name "\n;;\n"))
+    ;; the user may not want to see the output buffer
+    (if fsharp-display-when-eval
+        (display-buffer inferior-fsharp-buffer-name t))))
 
 (defvar fsharp-previous-output nil
   "tells the beginning of output in the shell-output buffer, so that the
