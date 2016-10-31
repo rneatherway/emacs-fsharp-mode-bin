@@ -122,7 +122,7 @@
       (define-key map [eval-phrase] '("Eval phrase" . fsharp-eval-phrase)))))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.fs[iylx]?$" . fsharp-mode))
+(add-to-list 'auto-mode-alist '("\\.fs[iylx]?\\'" . fsharp-mode))
 
 (defvar fsharp-mode-syntax-table nil
   "Syntax table in use in fsharp mode buffers.")
@@ -208,6 +208,7 @@
           comment-column
           comment-start-skip
           parse-sexp-ignore-comments
+          indent-region-function
           indent-line-function
           add-log-current-defun-function
           underline-minimum-offset
@@ -217,18 +218,15 @@
           company-auto-complete
           company-auto-complete-chars
           company-idle-delay
-          company-minimum-prefix-length
           company-require-match
           company-tooltip-align-annotations
           fsharp-ac-last-parsed-ticks
           fsharp-ac-errors))
 
-  (setq major-mode               'fsharp-mode
-        mode-name                "fsharp"
-        local-abbrev-table       fsharp-mode-abbrev-table
+  (setq local-abbrev-table       fsharp-mode-abbrev-table
         paragraph-start          (concat "^$\\|" page-delimiter)
         paragraph-separate       paragraph-start
-        require-final-newline    t
+        require-final-newline    'visit-save
         indent-tabs-mode         nil
         comment-start            "//"
         comment-end              ""
@@ -253,7 +251,6 @@
   (setq company-auto-complete 't)
   (setq company-auto-complete-chars ".")
   (setq company-idle-delay 0.03)
-  (setq company-minimum-prefix-length 0)
   (setq company-require-match 'nil)
   (setq company-tooltip-align-annotations 't)
 
