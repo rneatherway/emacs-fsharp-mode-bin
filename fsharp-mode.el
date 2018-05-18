@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.9.1
+;; Version: 1.9.12
 
 ;; This file is not part of GNU Emacs.
 
@@ -214,6 +214,7 @@
           comment-end
           comment-column
           comment-start-skip
+          comment-indent-function
           parse-sexp-ignore-comments
           indent-region-function
           indent-line-function

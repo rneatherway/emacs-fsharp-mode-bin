@@ -84,7 +84,8 @@ If set to nil, display in a help buffer instead.")
   (push (cons host process) fsharp-ac-completion-process-alist))
 
 (defun fsharp-ac-completion-process-del (host)
-  (delq (assoc host fsharp-ac-completion-process-alist) fsharp-ac-completion-process-alist))
+  (setq fsharp-ac-completion-process-alist
+	(delq (assoc host fsharp-ac-completion-process-alist) fsharp-ac-completion-process-alist)))
 
 (defvar fsharp-ac--project-data (make-hash-table :test 'equal)
   "Data returned by fsautocomplete for loaded projects.")
@@ -207,8 +208,7 @@ If FILENAME is not a Tramp filename return FILENAME"
 When completion process is not started on a remote location return FILE.
 This function should always be evaluated in the process-buffer!"
   (if (tramp-tramp-file-p default-directory)
-      (with-parsed-tramp-file-name default-directory nil
-	(tramp-make-tramp-file-name method user host file))
+      (concat (file-remote-p default-directory) file)
       file))
 
 ;;; ----------------------------------------------------------------------------
@@ -247,9 +247,8 @@ For indirect buffers return the truename of the base buffer."
 
 (defun fsharp-ac/load-file (file)
   "Start the compiler binding for an individual F# script FILE."
-  (when (and (fsharp-ac--script-file-p file) (file-exists-p file))
-    (unless (fsharp-ac--process-live-p (fsharp-ac--hostname file))
-      (fsharp-ac/start-process))
+  (when (and (fsharp-ac--script-file-p file) (not (fsharp-ac--process-live-p (fsharp-ac--hostname file))))
+    (fsharp-ac/start-process)
     (add-hook 'after-save-hook 'fsharp-ac--load-after-save nil 'local)))
 
 (defun fsharp-ac--load-after-save ()
@@ -271,6 +270,9 @@ For indirect buffers return the truename of the base buffer."
                        (downcase (file-name-extension file)))))
 
 (defun fsharp-ac--in-project-p (file)
+  "Return F# project file for source FILE.
+
+Return nil if FILE is not part of a F# project."
   (gethash file fsharp-ac--project-files))
 
 (defun fsharp-ac--reset ()
@@ -337,9 +339,7 @@ If HOST is nil, check process on local system."
 
 (defun fsharp-ac--configure-proc ()
   (let* ((fsac (if (tramp-tramp-file-p default-directory)
-		   (with-parsed-tramp-file-name default-directory nil
-		     (tramp-make-tramp-file-name
-		      method user host (car (last fsharp-ac-complete-command))))
+		   (concat (file-remote-p default-directory) (car (last fsharp-ac-complete-command)))
 		 (car (last fsharp-ac-complete-command))))
 	 (process-environment
 	  (if (null fsharp-ac-using-mono)
@@ -485,7 +485,7 @@ If HOST is nil, check process on local system."
            (or (regexp ,fsharp-ac--ident)
                (regexp ,fsharp-ac--rawIdent))
            "."))
-         (group (zero-or-more (not (any ":.` ,(\t\r\n"))))
+         (group (zero-or-more (not (any "\[:.` ,(\t\r\n"))))
          string-end))
   "Regexp for a dotted ident with a standard residue.")
 
