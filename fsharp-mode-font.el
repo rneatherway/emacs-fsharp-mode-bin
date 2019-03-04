@@ -153,9 +153,8 @@ with initial value INITVALUE and optional DOCSTRING."
           "\\([A-Za-z_][A-Za-z0-9_']*\\)\\s-*:\\s-*\\([A-Za-z_][A-Za-z0-9_'<> \t]*\\)"))
 
 (def-fsharp-compiled-var fsharp-attributes-regexp
-  "\\[<[A-Za-z0-9_]+>\\]"
-  "Match attributes like [<EntryPoint>]")
-
+  "\\(\\[<[A-Za-z0-9_]+[( ]?\\)\\(\".*\"\\)?\\()?>\\]\\)"
+  "Match attributes like [<EntryPoint>]; separately groups contained strings in attributes like [<Attribute(\"property\")>]")
 
 ;; F# makes extensive use of operators, many of which have some kind of
 ;; structural significance.
@@ -180,14 +179,15 @@ with initial value INITVALUE and optional DOCSTRING."
   "Match literal | in contexts like match and type declarations.")
 
 (defvar fsharp-imenu-generic-expression
-  `((nil ,(concat "^\\s-*" fsharp-function-def-regexp) 1)
-    (nil ,(concat "^\\s-*" fsharp-pattern-function-regexp) 1)
-    (nil ,(concat "^\\s-*" fsharp-active-pattern-regexp) 1)
-    (nil ,(concat "^\\s-*" fsharp-member-function-regexp) 1)
-    (nil ,(concat "^\\s-*" fsharp-overload-operator-regexp) 1)
-    (nil ,fsharp-constructor-regexp 1)
-    (nil ,fsharp-type-def-regexp 1)
-    )
+  `((nil                 ,(concat "^\\s-*" fsharp-function-def-regexp) 1)
+    (nil                 ,(concat "^\\s-*" fsharp-pattern-function-regexp) 1)
+    ("Active Pattern"    ,(concat "^\\s-*" fsharp-active-pattern-regexp) 1)
+    ("Member"            ,(concat "^\\s-*" fsharp-member-function-regexp) 1)
+    ("Overload Operator" ,(concat "^\\s-*" fsharp-overload-operator-regexp) 1)
+    ("Constructor"       ,fsharp-constructor-regexp 1)
+    ("Type"              ,fsharp-type-def-regexp 1)
+    ("Module"            ,(concat "\\s-*module " fsharp-var-or-arg-regexp) 1))
+
   "Provide iMenu support through font-locking regexen.")
 
 (defun fsharp-imenu-load-index ()
@@ -286,14 +286,18 @@ with initial value INITVALUE and optional DOCSTRING."
        (1 font-lock-comment-face)
        (2 font-lock-keyword-face))
       ;; attributes
-      (,fsharp-attributes-regexp . font-lock-preprocessor-face)
+      (,fsharp-attributes-regexp
+       (1 font-lock-preprocessor-face)
+       (2 font-lock-string-face nil t)
+       (3 font-lock-preprocessor-face))
       ;; ;; type defines
       (,fsharp-type-def-regexp 1 font-lock-type-face)
       (,fsharp-function-def-regexp 1 font-lock-function-name-face)
       (,fsharp-pattern-function-regexp 1 font-lock-function-name-face)
-      ;; Active records
+      ;; Active Pattern
       ("(|" (0 'fsharp-ui-operator-face)
-       ("\\([A-Za-z'_]+\\)\\(|)\\)" nil nil
+       ("\\([A-Za-z'_]+\\)\\(|)?\\)"
+        nil nil
         (1 font-lock-function-name-face)
         (2 'fsharp-ui-operator-face)))
       (,fsharp-operator-pipe-regexp . 'fsharp-ui-operator-face)
