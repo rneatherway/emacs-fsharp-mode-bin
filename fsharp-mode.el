@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.9.13
+;; Version: 1.9.14
 
 ;; This file is not part of GNU Emacs.
 
@@ -49,7 +49,7 @@
   "The program used to compile F# source files.")
 
 (defvar fsharp-build-command
-  (-any #'fsharp-mode--msbuild-find '("xbuild" "msbuild"))
+  (-any #'fsharp-mode--msbuild-find '("msbuild" "xbuild"))
   "The command used to build F# projects and solutions.")
 
 ;;; ----------------------------------------------------------------------------
@@ -263,7 +263,7 @@
   (when (boundp 'electric-indent-inhibit) (setq electric-indent-inhibit t))
   (when (and (display-graphic-p)
              (boundp 'company-quickhelp-mode)) ; not supported on ttys
-    (company-quickhelp-mode 1))
+    (company-quickhelp-local-mode 1))
 
   (let ((file (buffer-file-name)))
     (when file
